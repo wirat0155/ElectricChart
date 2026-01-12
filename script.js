@@ -1,8 +1,8 @@
 // --- Configuration ---
 const PLANTS = [
-    { id: 'brazing', name: 'Brazing', color: '#f97316' },
+    { id: 'lp', name: 'LP', color: '#10b981' },
     { id: 'plating', name: 'Plating', color: '#0ea5e9' },
-    { id: 'lp', name: 'LP', color: '#10b981' }
+    { id: 'brazing', name: 'Brazing', color: '#f97316' }
 ];
 
 // --- State Application ---
@@ -10,8 +10,7 @@ let state = {
     viewDate: new Date(2026, 0, 1), // Year for main graph, Month for modal
     showComparison: false,
     modalShowComparison: false,
-    visiblePlants: [true, true, true],
-    visibleCostPlants: [true, true, true]
+    visiblePlants: [true, true, true]
 };
 
 // Caches
@@ -21,6 +20,8 @@ const dailyDataCache = {};
 let mainChart;
 let dailyChart;
 let costChart;
+let consumptionChart;
+let emissionChart;
 
 // --- Persistence Logic ---
 const STORAGE_KEY = 'uic_chart_settings_v2'; // Bump version
@@ -28,8 +29,7 @@ const STORAGE_KEY = 'uic_chart_settings_v2'; // Bump version
 const saveSettings = () => {
     const settings = {
         showComparison: state.showComparison,
-        visiblePlants: state.visiblePlants,
-        visibleCostPlants: state.visibleCostPlants
+        visiblePlants: state.visiblePlants
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
 };
@@ -46,9 +46,6 @@ const loadSettings = () => {
             }
             if (Array.isArray(parsed.visiblePlants) && parsed.visiblePlants.length === 3) {
                 state.visiblePlants = parsed.visiblePlants;
-            }
-            if (Array.isArray(parsed.visibleCostPlants) && parsed.visibleCostPlants.length === 3) {
-                state.visibleCostPlants = parsed.visibleCostPlants;
             }
         } catch (e) {
             console.error('Failed to load settings', e);
@@ -196,8 +193,14 @@ const initMainChart = () => {
 
 const updateDashboard = () => {
     const year = state.viewDate.getFullYear();
-    const yearInput = document.getElementById('yearInput');
-    if (yearInput) yearInput.value = year;
+    const month = state.viewDate.getMonth() + 1;
+
+    // Sync Global Input
+    const globalInput = document.getElementById('globalDateInput');
+    if (globalInput) {
+        const fmt = `${year}-${String(month).padStart(2, '0')}`;
+        if (globalInput.value !== fmt) globalInput.value = fmt;
+    }
 
     // Check future year
     const isFuture = year > 2026; // Demo constraint
@@ -206,7 +209,8 @@ const updateDashboard = () => {
         document.getElementById('chart').style.opacity = '0.1';
         document.getElementById('summaryGrid').innerHTML = '';
         // Also update cost chart to empty or same year
-        updateCostChart(year);
+        // Also update cost chart to empty or same year
+        updateSecondaryCharts(year);
         return;
     } else {
         document.getElementById('noDataOverlay').classList.remove('active');
@@ -243,8 +247,11 @@ const updateDashboard = () => {
     // Summary Update (Total for the Year)
     updateSummary(dataSet.plantData);
 
-    // Cost Chart Update
-    updateCostChart(year);
+    // Cost/Cons/CO2 Charts Update
+    updateSecondaryCharts(year);
+
+    // Also update detail charts if they are open/active (or just update them always to be safe)
+    if (dailyChart) updateDailyChart();
 };
 
 const updateSummary = (plantSeries) => {
@@ -341,18 +348,16 @@ const initDailyChart = () => {
 };
 
 const updateDailyChart = () => {
-    const yearStr = state.viewDate.getFullYear();
-    const monthStr = String(state.viewDate.getMonth() + 1).padStart(2, '0');
-    const input = document.getElementById('modalMonthInput');
-    if (input) input.value = `${yearStr}-${monthStr}`;
-
+    // Note: Modal now follows GLOBAL state.viewDate
     const dataSet = generateDailyData(state.viewDate);
     const daysArray = Array.from({ length: dataSet.daysInMonth }, (_, i) => i + 1);
 
-    let series = dataSet.plantData.map(p => ({
+    let series = dataSet.plantData.map((p, idx) => ({
         name: p.name,
         type: 'bar',
-        data: p.data
+        data: p.data,
+        // Apply global visibility
+        hidden: !state.visiblePlants[idx]
     }));
 
     if (state.modalShowComparison) {
@@ -388,139 +393,179 @@ const updateDailyChart = () => {
     dailyChart.updateSeries(series);
 };
 
-// --- COST CHART RENDERING (Unchanged Logic, mostly) ---
-// Cache structure: { 'YYYY': { plantCosts: [] } }
-const costCache = {};
+// --- SECONDARY CHARTS (Cost, Consumption, CO2) ---
+const secondaryCache = {};
 
-const generateAnnualCostData = (year) => {
+// Helper to generate data for Cost, KW, CO2
+const generateSecondaryData = (year) => {
     const key = String(year);
-    if (costCache[key]) return costCache[key];
+    if (secondaryCache[key]) return secondaryCache[key];
 
-    const randFloat = (min, max) => (Math.random() * (max - min) + min);
+    // Mock Data based on typical production patterns (Seasonality: High in Q4, Low in Q2)
+    // LP: Low consumption, Plating: Medium, Brazing: High (Ovens)
 
-    // Cost (THB)
-    const plantCosts = PLANTS.map(plant => ({
+    // Base profiles (kWh per month average)
+    const baseCons = { 'lp': 8000, 'plating': 25000, 'brazing': 65000 };
+    const seasonalFactors = [0.9, 0.95, 1.1, 1.0, 0.9, 0.9, 1.0, 1.05, 1.15, 1.25, 1.2, 1.1]; // Jan-Dec
+
+    // Cost per Unit (THB/kWh) - Fluctuates slightly
+    const ftRate = [4.2, 4.2, 4.2, 4.2, 4.5, 4.5, 4.5, 4.5, 4.7, 4.7, 4.7, 4.7]; // Example rate changes
+
+    // Emission Factor (kgCO2e/kWh) - Constant for grid electricity
+    const emissionFactor = 0.4999;
+
+    // Consumption (kWh)
+    const consData = PLANTS.map(plant => ({
         name: plant.name,
         color: plant.color,
-        data: Array.from({ length: 12 }, () => parseFloat(randFloat(1.00, 4.00).toFixed(2)))
+        data: seasonalFactors.map(factor => {
+            const base = baseCons[plant.id];
+            // Add some randomness +/- 5%
+            const variance = (Math.random() * 0.1) + 0.95;
+            return parseFloat((base * factor * variance).toFixed(0));
+        })
     }));
 
-    // Consumption (kW)
-    const plantKW = PLANTS.map(plant => ({
+    // Cost (THB) = Consumption * Rate
+    const costData = PLANTS.map((plant, idx) => ({
         name: plant.name,
         color: plant.color,
-        data: Array.from({ length: 12 }, () => parseFloat(randFloat(0.5, 2.5).toFixed(2)))
+        data: consData[idx].data.map((kwh, mIdx) => {
+            return parseFloat((kwh * ftRate[mIdx]).toFixed(2));
+        })
     }));
 
-    const result = { plantCosts, plantKW };
-    costCache[key] = result;
+    // CO2 (kg) = Consumption * Factor
+    const co2Data = PLANTS.map((plant, idx) => ({
+        name: plant.name,
+        color: plant.color,
+        data: consData[idx].data.map(kwh => {
+            return parseFloat((kwh * emissionFactor).toFixed(2));
+        })
+    }));
+
+    const result = { costData, consData, co2Data };
+    secondaryCache[key] = result;
     return result;
 };
 
-const initCostChart = () => {
-    const options = {
-        series: [],
-        chart: {
-            height: 350,
-            type: 'line', // Mixed
-            stacked: true,
-            fontFamily: 'Outfit, sans-serif',
-            toolbar: { show: false },
-            events: {
-                legendClick: function (chartContext, seriesIndex, config) {
-                    if (seriesIndex < PLANTS.length) {
-                        state.visibleCostPlants[seriesIndex] = !state.visibleCostPlants[seriesIndex];
-                        saveSettings();
-                        updateCostChart(state.viewDate.getFullYear());
-                        return false;
-                    }
-                    return true;
+// Generic Chart Options Factory
+const getSecondaryChartOptions = (unit) => ({
+    series: [],
+    chart: {
+        height: 300,
+        type: 'bar',
+        stacked: true,
+        fontFamily: 'Outfit, sans-serif',
+        toolbar: { show: false },
+        events: {
+            legendClick: function (chartContext, seriesIndex, config) {
+                if (seriesIndex < PLANTS.length) {
+                    state.visiblePlants[seriesIndex] = !state.visiblePlants[seriesIndex];
+                    saveSettings();
+                    updateDashboard();
+                    return false;
+                }
+                return true;
+            }
+        }
+    },
+    plotOptions: {
+        bar: {
+            columnWidth: '50%',
+            borderRadius: 4,
+            dataLabels: {
+                total: {
+                    enabled: true,
+                    style: { fontSize: '11px', fontWeight: 600 },
+                    formatter: (val) => val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val.toFixed(0)
                 }
             }
-        },
-        stroke: { width: 2, curve: 'smooth' },
-        plotOptions: {
-            bar: {
-                columnWidth: '60%',
-                borderRadius: 4,
-                dataLabels: {
-                    total: {
-                        enabled: true,
-                        style: { fontSize: '10px', fontWeight: 600 },
-                        formatter: (val) => val ? val.toFixed(2) : ''
-                    }
-                }
-            }
-        },
-        dataLabels: { enabled: false },
-        xaxis: {
-            categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-        },
-        yaxis: { title: { text: 'THB / Unit' } },
-        legend: { position: 'top', horizontalAlign: 'right', inverseOrder: true }
-    };
+        }
+    },
+    dataLabels: { enabled: false },
+    xaxis: {
+        categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+        axisBorder: { show: false },
+        axisTicks: { show: false }
+    },
+    yaxis: {
+        title: { text: unit },
+        labels: { formatter: (val) => val >= 1000 ? (val / 1000).toFixed(0) + 'k' : val.toFixed(0) }
+    },
+    colors: PLANTS.map(p => p.color),
+    legend: { position: 'top', horizontalAlign: 'right', inverseOrder: true },
+    tooltip: { shared: true, intersect: false },
+    grid: { borderColor: '#f1f5f9' },
+    noData: {
+        text: 'No Data Available',
+        align: 'center',
+        verticalAlign: 'middle',
+        style: {
+            color: '#64748b',
+            fontSize: '16px',
+            fontFamily: 'Outfit, sans-serif'
+        }
+    }
+});
 
-    costChart = new ApexCharts(document.querySelector("#costChart"), options);
+const initSecondaryCharts = () => {
+    costChart = new ApexCharts(document.querySelector("#costChart"), getSecondaryChartOptions('THB'));
     costChart.render();
+
+    consumptionChart = new ApexCharts(document.querySelector("#consumptionChart"), getSecondaryChartOptions('kWh'));
+    consumptionChart.render();
+
+    emissionChart = new ApexCharts(document.querySelector("#emissionChart"), getSecondaryChartOptions('kgCO₂e'));
+    emissionChart.render();
 };
 
-window.updateShowState = () => {
-    updateCostChart(state.viewDate.getFullYear());
-};
-
-const updateCostChart = (year) => {
+const updateSecondaryCharts = (year) => {
     document.getElementById('costYearLabel').textContent = year;
-    const showCost = document.getElementById('showCostCheck').checked;
-    const showKW = document.getElementById('showKWCheck').checked;
 
-    const dataSet = generateAnnualCostData(year);
-    let series = [];
-    let yaxis = [];
-
-    if (showCost && showKW) {
-        dataSet.plantCosts.forEach((p, idx) => {
-            series.push({ name: p.name, type: 'bar', data: p.data, color: p.color, hidden: !state.visibleCostPlants[idx] });
-        });
-        dataSet.plantKW.forEach((p, idx) => {
-            series.push({ name: p.name + ' (kW)', type: 'line', data: p.data, color: p.color, showInLegend: false, hidden: !state.visibleCostPlants[idx] });
-        });
-        yaxis = [
-            { seriesName: dataSet.plantCosts[0]?.name, title: { text: 'Cost (THB)' }, show: true, decimalsInFloat: 2 },
-            { opposite: true, title: { text: 'Consumption (kW)' }, show: true, decimalsInFloat: 2 }
-        ];
-    } else if (showCost) {
-        dataSet.plantCosts.forEach((p, idx) => {
-            series.push({ name: p.name, type: 'bar', data: p.data, color: p.color, hidden: !state.visibleCostPlants[idx] });
-        });
-        yaxis = [{ title: { text: 'Cost (THB)' }, show: true, decimalsInFloat: 2 }];
-    } else if (showKW) {
-        dataSet.plantKW.forEach((p, idx) => {
-            series.push({ name: p.name, type: 'bar', data: p.data, color: p.color, hidden: !state.visibleCostPlants[idx] });
-        });
-        yaxis = [{ title: { text: 'Consumption (kW)' }, show: true, decimalsInFloat: 2 }];
-    } else {
-        series = [{ data: [] }];
-        yaxis = [{ show: false }];
+    // Future Check
+    const isFuture = year > 2026;
+    if (isFuture) {
+        [costChart, consumptionChart, emissionChart].forEach(c => c.updateSeries([]));
+        return;
     }
 
-    costChart.updateOptions({
-        chart: { stacked: true },
-        yaxis: yaxis,
-        stroke: { width: (showCost && showKW) ? [0, 0, 0, 2, 2, 2] : 0 }
-    });
-    costChart.updateSeries(series);
+    const data = generateSecondaryData(year);
+
+    // Helper to filter hidden plants
+    const getVisibleSeries = (sourceData) => sourceData.map((s, idx) => ({
+        ...s,
+        hidden: !state.visiblePlants[idx]
+    }));
+
+    costChart.updateSeries(getVisibleSeries(data.costData));
+    consumptionChart.updateSeries(getVisibleSeries(data.consData));
+    emissionChart.updateSeries(getVisibleSeries(data.co2Data));
 };
+
+// No longer window.updateShowState needed
+window.updateShowState = () => { };
 
 
 // --- EVENT LISTENERS ---
 
-// Main Graph Year Navigation
-document.getElementById('prevYearBtn').addEventListener('click', () => {
-    state.viewDate.setFullYear(state.viewDate.getFullYear() - 1);
-    updateDashboard();
+// --- EVENT LISTENERS ---
+
+// Global Month/Year Navigation
+document.getElementById('prevDateBtn').addEventListener('click', () => {
+    state.viewDate.setMonth(state.viewDate.getMonth() - 1);
+    updateDashboard(); // Updates ALL charts
 });
-document.getElementById('nextYearBtn').addEventListener('click', () => {
-    state.viewDate.setFullYear(state.viewDate.getFullYear() + 1);
+document.getElementById('nextDateBtn').addEventListener('click', () => {
+    state.viewDate.setMonth(state.viewDate.getMonth() + 1);
+    updateDashboard(); // Updates ALL charts
+});
+
+document.getElementById('globalDateInput').addEventListener('change', (e) => {
+    if (!e.target.value) return;
+    const [y, m] = e.target.value.split('-').map(Number);
+    state.viewDate.setFullYear(y);
+    state.viewDate.setMonth(m - 1);
     updateDashboard();
 });
 
@@ -538,6 +583,15 @@ const closeDetailBtn = document.getElementById('closeDetailBtn');
 
 const openModal = () => {
     detailModal.classList.add('active');
+
+    // Update Title with Date
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentYear = state.viewDate.getFullYear();
+    const currentMonthName = monthNames[state.viewDate.getMonth()];
+
+    const titleEl = detailModal.querySelector('.modal-title h2');
+    if (titleEl) titleEl.textContent = `Daily FG Production - ${currentMonthName} ${currentYear}`;
+
     if (!dailyChart) initDailyChart();
 
     // Update Daily Chart to match current View Year + Month (defaulting to Jan if not tracked, but we track full Date)
@@ -555,157 +609,136 @@ detailModal.addEventListener('click', (e) => {
     if (e.target === detailModal) closeModal();
 });
 
-// Modal Month Navigation
-// Modal Month Navigation
-document.getElementById('prevMonthBtn').addEventListener('click', () => {
-    state.viewDate.setMonth(state.viewDate.getMonth() - 1);
-    updateDailyChart();
-    updateDashboard();
-});
-
-document.getElementById('nextMonthBtn').addEventListener('click', () => {
-    state.viewDate.setMonth(state.viewDate.getMonth() + 1);
-    updateDailyChart();
-    updateDashboard();
-});
-
-// Modal Logic Extras
-document.getElementById('yearInput').addEventListener('change', (e) => {
-    const val = parseInt(e.target.value);
-    if (!isNaN(val)) {
-        state.viewDate.setFullYear(val);
-        updateDashboard();
-    }
-});
-
 document.getElementById('modalCompareToggle').addEventListener('change', (e) => {
     state.modalShowComparison = e.target.checked;
     updateDailyChart();
     // Intentionally NOT saving this setting as requested
 });
 
-document.getElementById('modalMonthInput').addEventListener('change', (e) => {
-    if (!e.target.value) return;
-    const [y, m] = e.target.value.split('-').map(Number);
-    state.viewDate.setFullYear(y);
-    state.viewDate.setMonth(m - 1);
-    updateDailyChart();
-    updateDashboard();
+
+
+
+
+// --- SECONDARY MODAL LOGIC (Detail View) ---
+let secChart1, secChart2, secChart3;
+const secModal = document.getElementById('secondaryDetailModal');
+
+// Reusable Options
+const getDetailChartOptions = (type, unit) => ({
+    series: [],
+    chart: { type: 'line', height: 350, toolbar: { show: false } },
+    stroke: { width: 3, curve: 'smooth' },
+    plotOptions: { bar: { borderRadius: 4, columnWidth: '50%' } }, // If bar used
+    yaxis: { title: { text: unit } },
+    legend: { position: 'top', horizontalAlign: 'right', inverseOrder: true },
+    colors: PLANTS.map(p => p.color),
+    grid: { borderColor: '#f1f5f9' }
 });
 
+const openSecondaryModal = (type) => {
+    let title = '';
+    let unit = '';
+    if (type === 'cost') { title = 'Electricity Cost Analysis'; unit = 'THB'; }
+    if (type === 'cons') { title = 'Electricity Consumption Analysis'; unit = 'kWh'; }
+    if (type === 'co2') { title = 'CO₂ Emissions Analysis'; unit = 'kgCO₂e'; }
 
+    // Format Date for Titles
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const currentYear = state.viewDate.getFullYear();
+    const currentMonthName = monthNames[state.viewDate.getMonth()];
 
+    document.getElementById('secModalTitle').textContent = title;
+    // Set titles for sub-charts
+    document.getElementById('secChartTitle1').textContent = `Daily Total ${unit} (${currentMonthName} ${currentYear})`;
+    document.getElementById('secChartTitle2').textContent = `Avg ${unit} per Unit (Annual View - 1-12 ${currentYear})`;
+    document.getElementById('secChartTitle3').textContent = `Avg ${unit} per Unit (Daily View - ${currentMonthName} ${currentYear})`;
+
+    secModal.classList.add('active');
+
+    // Init charts if first time
+    if (!secChart1) {
+        secChart1 = new ApexCharts(document.querySelector("#secChart1"), {
+            ...getDetailChartOptions(type, unit),
+            chart: { type: 'bar', stacked: true, height: 350, toolbar: { show: false } },
+            plotOptions: {
+                bar: {
+                    borderRadius: 4,
+                    columnWidth: '50%',
+                    dataLabels: {
+                        total: {
+                            enabled: true,
+                            style: { fontSize: '11px', fontWeight: 600, color: '#374151' },
+                            formatter: (val) => val >= 1000 ? (val / 1000).toFixed(1) + 'k' : val.toLocaleString(),
+                            offsetY: -8
+                        }
+                    }
+                }
+            },
+            dataLabels: { enabled: false }
+        });
+        secChart1.render();
+        secChart2 = new ApexCharts(document.querySelector("#secChart2"), getDetailChartOptions(type, unit));
+        secChart2.render();
+        secChart3 = new ApexCharts(document.querySelector("#secChart3"), getDetailChartOptions(type, unit));
+        secChart3.render();
+    } else {
+        // Update Y-Axis titles
+        [secChart1, secChart2, secChart3].forEach(c => c.updateOptions({ yaxis: { title: { text: unit } } }));
+    }
+
+    updateSecondaryDetailCharts(type);
+};
+
+const updateSecondaryDetailCharts = (type) => {
+    // 1. Daily Total (Month View) - using modal viewDate logic or just random
+    const rand = (min, max) => Math.floor(Math.random() * (max - min + 1)) + min;
+    const randFloat = (min, max) => (Math.random() * (max - min) + min);
+
+    // Mock Data Gen
+    const days = 30; // Simplify
+    const daysArr = Array.from({ length: days }, (_, i) => i + 1);
+    const monthsArr = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+    // Chart 1: Daily Total (Stacked Bar)
+    const series1 = PLANTS.map(p => ({
+        name: p.name,
+        type: 'bar',
+        data: Array.from({ length: days }, () => rand(1000, 5000))
+    }));
+    secChart1.updateOptions({ xaxis: { categories: daysArr } });
+    secChart1.updateSeries(series1);
+
+    // Chart 2: Avg Per Unit (Annual 1-12) (Line)
+    // Low value ~ 0.5 - 2.0
+    const series2 = PLANTS.map(p => ({
+        name: p.name,
+        type: 'line',
+        data: Array.from({ length: 12 }, () => parseFloat(randFloat(0.2, 1.5).toFixed(3)))
+    }));
+    secChart2.updateOptions({ xaxis: { categories: monthsArr } });
+    secChart2.updateSeries(series2);
+
+    // Chart 3: Avg Per Unit (Daily 1-30) (Line)
+    const series3 = PLANTS.map(p => ({
+        name: p.name,
+        type: 'line',
+        data: Array.from({ length: days }, () => parseFloat(randFloat(0.2, 1.5).toFixed(3)))
+    }));
+    secChart3.updateOptions({ xaxis: { categories: daysArr } });
+    secChart3.updateSeries(series3);
+};
+
+document.getElementById('closeSecDetailBtn').addEventListener('click', () => {
+    secModal.classList.remove('active');
+});
+
+// Expose to window for HTML onclick
+window.openSecondaryModal = openSecondaryModal;
 
 // --- INITIALIZATION ---
 document.addEventListener('DOMContentLoaded', () => {
     loadSettings();
     initMainChart();
-    initCostChart();
+    initSecondaryCharts();
     updateDashboard();
 });
-
-
-// --- PDF DOWNLOAD (Updated implementation) ---
-const downloadPDF = async () => {
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const margin = 10;
-    const availableWidth = pageWidth - (margin * 2);
-    const now = new Date();
-    const downloadTime = now.toLocaleString('th-TH');
-    const year = state.viewDate.getFullYear();
-
-    const fileName = `Dashboard_${year}_Download.pdf`;
-
-    const getImageDimensions = (base64) => {
-        return new Promise((resolve) => {
-            const img = new Image();
-            img.onload = () => resolve({ w: img.width, h: img.height });
-            img.src = base64;
-        });
-    };
-
-    const addFooter = (pageNumber) => {
-        doc.setFontSize(8);
-        doc.setTextColor(150);
-        doc.text(`Year: ${year} | Downloaded: ${downloadTime} | Page ${pageNumber}`, margin, doc.internal.pageSize.getHeight() - margin);
-    };
-
-    // PAGE 1: Annual Production
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(18);
-    doc.setTextColor(15, 23, 42);
-    doc.text("FG Production Overview (Annual)", margin, margin + 10);
-
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(12);
-    doc.setTextColor(100);
-    doc.text(`Year ${year}`, margin, margin + 18);
-
-    try {
-        const chart1URI = await mainChart.dataURI();
-        if (chart1URI && chart1URI.imgURI) {
-            const dims = await getImageDimensions(chart1URI.imgURI);
-            const ratio = dims.h / dims.w;
-            const imgHeight = availableWidth * ratio;
-            doc.addImage(chart1URI.imgURI, 'PNG', margin, 40, availableWidth, imgHeight);
-
-            // Summary Table
-            let finalY = 40 + imgHeight + 10;
-            if (finalY > 150) finalY = 150;
-
-            doc.setFontSize(14);
-            doc.setTextColor(0);
-            doc.text("Annual Summary", margin, finalY);
-
-            const dataSet = generateAnnualData(year);
-            let grandTotal = 0;
-            let xPos = margin;
-            finalY += 10;
-            doc.setFontSize(10);
-
-            dataSet.plantData.forEach(p => {
-                const total = p.data.reduce((a, b) => a + b, 0);
-                grandTotal += total;
-                doc.setTextColor(100);
-                doc.text(`${p.name}`, xPos, finalY);
-                doc.setTextColor(0);
-                doc.setFont("helvetica", "bold");
-                doc.text(`${total.toLocaleString()}`, xPos, finalY + 5);
-                doc.setFont("helvetica", "normal");
-                xPos += 40;
-            });
-            doc.setTextColor(100);
-            doc.text(`Grand Total`, xPos, finalY);
-            doc.setTextColor(220, 38, 38);
-            doc.setFont("helvetica", "bold");
-            doc.text(`${grandTotal.toLocaleString()}`, xPos, finalY + 5);
-        }
-    } catch (e) { console.error(e); }
-
-    addFooter(1);
-
-    // PAGE 2: Cost
-    doc.addPage();
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(18);
-    doc.setFont("helvetica", "bold");
-    doc.text("Electricity Cost Analysis", margin, margin + 10);
-    doc.setFontSize(12);
-    doc.setFont("helvetica", "normal");
-    doc.text(`Year ${year}`, margin, margin + 18);
-
-    try {
-        const chart2URI = await costChart.dataURI();
-        if (chart2URI && chart2URI.imgURI) {
-            const dims = await getImageDimensions(chart2URI.imgURI);
-            const ratio = dims.h / dims.w;
-            const imgHeight = availableWidth * ratio;
-            doc.addImage(chart2URI.imgURI, 'PNG', margin, 40, availableWidth, imgHeight);
-        }
-    } catch (e) { }
-    addFooter(2);
-
-    doc.save(fileName);
-};

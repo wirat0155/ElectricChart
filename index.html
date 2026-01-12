@@ -22,11 +22,7 @@
             </div>
 
             <div class="controls-container">
-                <!-- Download Button -->
-                <button class="nav-btn" id="downloadBtn" onclick="downloadPDF()" title="Download PDF"
-                    style="aspect-ratio: auto; padding: 0 12px; font-weight: 500; font-size: 0.9em; width: auto; gap: 6px;">
-                    <i class="ri-file-download-line"></i> PDF
-                </button>
+
 
                 <!-- Year Comparison Toggle -->
                 <label class="toggle-container" title="Compare with data from same time last year">
@@ -37,18 +33,18 @@
                     </div>
                 </label>
 
-                <!-- Year Navigator -->
+                <!-- Global Date Picker -->
                 <div class="date-navigator">
-                    <button class="nav-btn" id="prevYearBtn">
+                    <button class="nav-btn" id="prevDateBtn">
                         <i class="ri-arrow-left-s-line"></i>
                     </button>
 
                     <div class="current-month-container">
-                        <input type="number" id="yearInput" class="current-month" value="2026"
-                            style="width: 80px; text-align: center; background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; font-weight: inherit; -moz-appearance: textfield;">
+                        <input type="month" id="globalDateInput" class="current-month" value="2026-01"
+                            style="background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; font-weight: inherit; cursor: pointer;">
                     </div>
 
-                    <button class="nav-btn" id="nextYearBtn">
+                    <button class="nav-btn" id="nextDateBtn">
                         <i class="ri-arrow-right-s-line"></i>
                     </button>
                 </div>
@@ -85,29 +81,59 @@
                 <h1>Electricity Cost Analysis</h1>
                 <p>Annual Metrics - Year <span id="costYearLabel"></span></p>
             </div>
-            <!-- Toggle Controls (No Persistence) -->
-            <div class="toggle-container" style="gap: 15px;">
-                <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; color: var(--text-secondary);">
-                    <input type="checkbox" id="showCostCheck" checked onchange="updateShowState()">
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="width: 12px; height: 12px; background: #cbd5e1; border-radius: 2px;"></span>
-                        Cost (THB)
-                    </span>
-                </label>
-                <label
-                    style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 0.9rem; color: var(--text-secondary);">
-                    <input type="checkbox" id="showKWCheck" checked onchange="updateShowState()">
-                    <span style="display: flex; align-items: center; gap: 4px;">
-                        <span style="width: 12px; height: 2px; background: #cbd5e1;"></span>
-                        Consumption (kW)
-                    </span>
-                </label>
-            </div>
         </div>
 
-        <div id="costWrapper" style="position: relative; min-height: 350px;">
-            <div id="costChart"></div>
+        <!-- 3 Separate Charts for Cost Analysis -->
+        <div style="display: grid; grid-template-columns: 1fr; gap: 40px;">
+
+            <!-- 1. Cost (THB) -->
+            <div class="chart-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div
+                        style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                        <i class="ri-money-dollar-circle-line" style="font-size: 1.2rem; color: #f59e0b;"></i>
+                        Cost (THB)
+                    </div>
+                    <button class="detail-btn" onclick="openSecondaryModal('cost')"
+                        style="padding: 6px 12px; font-size: 0.85rem;">
+                        <i class="ri-search-eye-line"></i> Detail
+                    </button>
+                </div>
+                <div id="costChart"></div>
+            </div>
+
+            <!-- 2. Consumption (kWh) -->
+            <div class="chart-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div
+                        style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                        <i class="ri-flashlight-line" style="font-size: 1.2rem; color: #eab308;"></i>
+                        Consumption (kWh)
+                    </div>
+                    <button class="detail-btn" onclick="openSecondaryModal('cons')"
+                        style="padding: 6px 12px; font-size: 0.85rem;">
+                        <i class="ri-search-eye-line"></i> Detail
+                    </button>
+                </div>
+                <div id="consumptionChart"></div>
+            </div>
+
+            <!-- 3. CO2 Emissions -->
+            <div class="chart-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <div
+                        style="font-weight: 600; color: var(--text-primary); display: flex; align-items: center; gap: 8px;">
+                        <i class="ri-leaf-line" style="font-size: 1.2rem; color: #10b981;"></i>
+                        CO₂ Emissions (kgCO₂e)
+                    </div>
+                    <button class="detail-btn" onclick="openSecondaryModal('co2')"
+                        style="padding: 6px 12px; font-size: 0.85rem;">
+                        <i class="ri-search-eye-line"></i> Detail
+                    </button>
+                </div>
+                <div id="emissionChart"></div>
+            </div>
+
         </div>
 
     </div>
@@ -130,20 +156,6 @@
                             <span class="slider"></span>
                         </div>
                     </label>
-
-                    <!-- Month Navigator for Modal -->
-                    <div class="date-navigator">
-                        <button class="nav-btn" id="prevMonthBtn">
-                            <i class="ri-arrow-left-s-line"></i>
-                        </button>
-                        <div class="current-month-container">
-                            <input type="month" id="modalMonthInput" class="current-month"
-                                style="background: transparent; border: none; color: inherit; font-family: inherit; font-size: inherit; font-weight: inherit; cursor: pointer;">
-                        </div>
-                        <button class="nav-btn" id="nextMonthBtn">
-                            <i class="ri-arrow-right-s-line"></i>
-                        </button>
-                    </div>
                 </div>
 
                 <button class="modal-close-btn" id="closeDetailBtn">
@@ -151,6 +163,50 @@
                 </button>
             </div>
             <div id="dailyChart" style="min-height: 400px;"></div>
+        </div>
+    </div>
+
+    <!-- Secondary Detail Modal (Cost/Cons/CO2) -->
+    <div class="modal-overlay" id="secondaryDetailModal">
+        <div class="modal-content" style="max-width: 1100px; height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <h2 id="secModalTitle">Analysis Details</h2>
+                    <p style="color: var(--text-secondary); margin-top: 4px;">Deep Dive Metrics</p>
+                </div>
+                <button class="modal-close-btn" id="closeSecDetailBtn">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+
+            <div style="overflow-y: auto; padding-right: 10px; flex: 1;">
+                <!-- Graph 1: Daily Total (Bar Stacked) -->
+                <div class="chart-section" style="margin-bottom: 40px;">
+                    <h3 id="secChartTitle1"
+                        style="margin-bottom: 15px; font-size: 1.1rem; color: var(--text-secondary);">Daily Total</h3>
+                    <div id="secChart1"></div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 30px 0;">
+
+                <!-- Graph 2: Monthly Per Unit (Line) -->
+                <div class="chart-section" style="margin-bottom: 40px;">
+                    <h3 id="secChartTitle2"
+                        style="margin-bottom: 15px; font-size: 1.1rem; color: var(--text-secondary);">Avg per Unit
+                        (Monthly)</h3>
+                    <div id="secChart2"></div>
+                </div>
+
+                <hr style="border: 0; border-top: 1px dashed var(--border-color); margin: 30px 0;">
+
+                <!-- Graph 3: Daily Per Unit (Line) -->
+                <div class="chart-section">
+                    <h3 id="secChartTitle3"
+                        style="margin-bottom: 15px; font-size: 1.1rem; color: var(--text-secondary);">Avg per Unit
+                        (Daily)</h3>
+                    <div id="secChart3"></div>
+                </div>
+            </div>
         </div>
     </div>
 
