@@ -1,69 +1,51 @@
-# FG Production & Electricity Cost Dashboard
+# Electric Chart Dashboard
 
-Frontend Dashboard สำหรับแสดงผลข้อมูลการผลิต (Finished Goods) และวิเคราะห์ต้นทุนค่าไฟฟ้า (Electricity Cost) แสดงผลในรูปแบบ Data Visualization ที่สวยงาม ทันสมัย และตอบโจทย์การใช้งานจริง
+A modern, interactive dashboard for visualizing **Finished Goods (FG) Production** and **Electricity Cost Analysis**. Built with vanilla web technologies and ApexCharts, designed for clear insights into manufacturing performance and energy metrics across multiple plants (LP, Plating, Brazing).
 
-![Dashboard Screenshot](https://via.placeholder.com/1200x600?text=Dashboard+Preview)
-*(Note: You can replace this placeholder with your actual dashboard screenshot)*
+## 🚀 Key Features
 
-## ✨ Features (คุณสมบัติเด่น)
+### 🏭 FG Production Dashboard
+- **Annual Overview**: Visualize monthly production units per plant in a stacked bar format.
+- **Year-over-Year Comparison**: Toggle "Last Year" to compare current performance with historical data.
+- **Plant Filtering**: Interactive legend to toggle specific plant data (LP, Plating, Brazing) globally across all charts.
 
-### 1. Production Overview (ยอดการผลิต)
-*   **Monthly Data Visualization:** กราฟแท่งแสดงยอดผลิตรายวัน แยกตาม Plant (Brazing, Plating, LP)
-*   **Dynamic Navigation:** เลือกดูข้อมูลย้อนหลังได้ง่ายๆ ด้วยปฏิทินหรือปุ่มเลื่อนเดือน
-*   **Year-on-Year Comparison:** เปรียบเทียบยอดผลิตกับช่วงเวลาเดียวกันของปีที่แล้ว (Last Year) ได้ทันที
-*   **Interactive Legend:** ซ่อน/แสดงข้อมูลของแต่ละ Plant ได้ และระบบจะจำค่าที่เลือกไว้ (Persist Settings)
+### ⚡ Electricity Cost Analysis
+- **Three-Pillar Metrics**: Dedicated charts for:
+  - 💰 **Cost (THB)**
+  - ⚡ **Consumption (kWh)**
+  - 🌱 **CO₂ Emissions (kgCO₂e)**
+- **Realistic Data Modeling**: Includes seasonality factors (e.g., higher oven usage in Q4) and variable FT rates.
+- **Deep Dive Mode**: "Detail" buttons open specialized views for Daily Totals and Per-Unit Averages.
 
-### 2. Electricity Cost Analysis (วิเคราะห์ค่าไฟ)
-*   **Dual Metrics:** แสดงผลทั้ง **ต้นทุน (THB/Unit)** และ **ปริมาณการใช้ (kW/Unit)** ในกราฟเดียว
-*   **Flexible Visualization:**
-    *   Cost แสดงเป็น Stacked Bar
-    *   Consumption แสดงเป็น Line Chart (แกน Y แยกอิสระ)
-    *   สามารถเลือกเปิด/ปิดโหมดแสดงผลได้ตามต้องการ
-*   **Year Sync:** ข้อมูลงบประมาณจะเปลี่ยนตามปีที่เลือกในกราฟหลักอัตโนมัติ
+### 🧭 Unified Navigation & UX
+- **Global Date Control**: Single Month/Year picker synchronizes the entire dashboard (Main Graph, Cost Charts, and Modal Details).
+- **Drill-Down Modals**: Click "Detail" or interactive elements to view daily breakdowns with total value labels.
+- **Responsive Design**: Clean layout with separate cards for key metrics.
 
-### 3. Smart PDF Export 📄
-*   **High Quality Report:** สร้างไฟล์ PDF ขนาด A4 แนวนอน (Landscape) จำนวน 2 หน้า
-*   **Vector & Text:** กราฟคมชัดทุกอัตราส่วน (Aspect Ratio Preserved) และข้อความสรุปเป็น Text ที่สามารถ Copy ไปใช้งานต่อได้
-*   **Auto Layout:** แยกหน้ากราฟและข้อมูลสรุปให้อ่านง่ายโดยอัตโนมัติ
+## 🛠️ Tech Stack
+- **Frontend**: HTML5, CSS3, Vanilla JavaScript (ES6+)
+- **Visualization**: [ApexCharts.js](https://apexcharts.com/)
+- **Icons**: [Remix Icon](https://remixicon.com/)
+- **Font**: Google Fonts (Outfit)
 
-### 4. Data Persistence 💾
-*   ระบบจะจดจำการตั้งค่าของผู้ใช้ (เช่น การเปิด Compare Mode, การซ่อน Plant ที่ไม่ต้องการดู) ไว้ใน Local Storage ทำให้ไม่ต้องตั้งค่าใหม่ทุกครั้งที่เข้าใช้งาน
+## 📦 Getting Started
 
----
+This project is a static web application. No complex build step or backend server is required.
 
-## 🚀 Installation & Usage (วิธีติดตั้งและใช้งาน)
+1. **Clone the repository**:
+   ```bash
+   git clone https://github.com/wirat0155/ElectricChart.git
+   ```
+2. **Open the Dashboard**:
+   - Simply double-click `index.html` to open it in your web browser.
+   - Or serve it using a local static server (e.g., `Live Server` in VS Code).
 
-เนื่องจากโปรเจกต์นี้เป็น **Static Web Application** (HTML/CSS/JS) จึงไม่ต้องติดตั้ง Server หรือ Database ใดๆ
+## 📖 Usage Guide
 
-1.  **Clone Repository:**
-    ```bash
-    git clone https://github.com/wirat0155/ElectricChart.git
-    ```
-2.  **Open Project:**
-    *   เข้าไปที่โฟลเดอร์ `ElectricChart`
-    *   ดับเบิ้ลคลิกไฟล์ `index.html` เพื่อเปิดใช้งานผ่าน Web Browser (แนะนำ Chrome, Edge, หรือ Firefox)
+- **Navigation**: Use the arrows or the date picker in the top header to change the view period. All charts update instantly.
+- **Comparisons**: Toggle the "Last Year" switch to overlay the previous year's total line on the charts.
+- **Filtering**: Click on any plant name in the chart legend (e.g., "Brazing") to hide/show it everywhere.
+- **Details**: Click the "Detail" buttons on specific cards to explore daily trends inside a modal.
 
----
-
-## 🛠 Tech Stack
-*   **HTML5 / CSS3 (CSS Variables for theming)**
-*   **JavaScript (ES6+)**
-*   **ApexCharts.js** - สำหรับสร้างกราฟที่สวยงามและ Interactive
-*   **jsPDF** - สำหรับระบบ Export PDF
-*   **Remix Icon** - สำหรับไอคอนตกแต่ง
-*   **Google Fonts (Outfit)** - เพื่อความสวยงามทันสมัย
-
----
-
-## 📂 Project Structure
-```
-ElectricChart/
-├── index.html       # หน้าหลักของโปรแกรม
-├── style.css        # ไฟล์ตกแต่งกราฟิกและ Layout
-├── script.js        # Logic การทำงาน, คำนวณข้อมูล, และสร้างกราฟ
-├── UserManual.md    # คู่มือการใช้งานภาษาไทย
-└── README.md        # Document นี้
-```
-
----
-*Developed by AI Assistant & Wirat0155*
+## 📄 License
+Private / Internal Use Only.
